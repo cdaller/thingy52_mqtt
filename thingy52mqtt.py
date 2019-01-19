@@ -66,9 +66,10 @@ class MQTTDelegate(btle.DefaultDelegate):
         #Debug print repr(data)
         if (hnd == thingy52.e_temperature_handle):
             teptep = binascii.b2a_hex(data)
+            tempValue = self._str_to_int(teptep[:-2]) + int(teptep[-2:], 16) / 10.0
             logger.debug('Notification: Temp received:  {}.{} degCelcius'.format(
                         self._str_to_int(teptep[:-2]), int(teptep[-2:], 16)))
-            # mqttSend(self, 'temperature', )
+            logger.debug('Sending MQTT messages key %s value %s' % ('temp', tempValue))
             
         elif (hnd == thingy52.e_pressure_handle):
             pressure_int, pressure_dec = self._extract_pressure_data(data)
