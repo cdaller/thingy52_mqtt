@@ -20,27 +20,48 @@ import os
 import argparse
 import binascii
 import logging
+import signal
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-                    datefmt='%m-%d %H:%M')
+                    datefmt='%yyyy%m%d-%H:%M:%S')
 
 logger = logging.getLogger(os.path.basename(__file__))
 logger.debug('Starting...')
 
 
 next_event_second = 0
+args = None
+thingy = None
+
+def setupSigInt():
+    '''Sets up our Ctrl + C handler'''
+    signal.signal(signal.SIGINT, _sigIntHandler)
+    logging.debug("Installed Ctrl+C handler.")
+
+def _sigIntHandler(signum, frame):
+    global thingy
+
+    '''This function handles Ctrl+C for graceful shutdown of the programme'''
+    logging.info("Received Ctrl+C. Exiting.")
+    # handled in finally: thingy.disconnect()
+    # stopMQTT()
+    exit(0)
+
 
 class MQTTDelegate(btle.DefaultDelegate):
-    global next_event_second
 
     def mqttSend(self, key, value):
         logger.debug('Sending MQTT messages key %s value %s' % (key, value))
     
     def handleNotification(self, hnd, data):
+        # global next_event_second
+        # global args
+
         # if time.time() < next_event_second:
         #     logger.debug('Notification received, but timeout not yet reached')
         #     return
+        # next_event_second = time.time() + args.sleep
 
         #Debug print repr(data)
         if (hnd == thingy52.e_temperature_handle):
@@ -173,8 +194,62 @@ def parseArgs():
     args = parser.parse_args()
     return args
 
+def setNotifications(enable):
+    global thingy
+    global args
+
+    if args.temperature:
+        thingy.environment.set_temperature_notification(enable)
+    if args.pressure:
+        thingy.environment.set_humidity_notification(enable)
+    if args.pressure:
+        thingy.environment.set_pressure_notification(enable)
+    if args.gas:
+        thingy.environment.set_gas_notification(enable)
+    if args.color:
+        thingy.environment.set_color_notification(enable)
+    if args.tap:
+        thingy.motion.set_tap_notification(enable)
+
+def enableSensors():
+    global thingy
+    global args
+
+    # Enabling selected sensors
+    logger.debug('Enabling selected sensors...')
+
+    if args.temperature:
+        thingy.environment.enable()
+        thingy.environment.configure(temp_int=1000)
+    if args.pressure:
+        thingy.environment.enable()
+        thingy.environment.configure(press_int=1000)
+    if args.humidity:
+        thingy.environment.enable()
+        thingy.environment.configure(humid_int=1000)
+    if args.gas:
+        thingy.environment.enable()
+        thingy.environment.configure(gas_mode_int=1)
+    if args.color:
+        thingy.environment.enable()
+        thingy.environment.configure(color_int=1000)
+        thingy.environment.configure(color_sens_calib=[0,0,0])
+    # User Interface Service
+    if args.keypress:
+        thingy.ui.enable()
+        thingy.ui.set_btn_notification(True)
+    if args.battery:
+        thingy.battery.enable()
+    # Motion Service
+    if args.tap:
+        thingy.motion.enable()
+        thingy.motion.configure(motion_freq=200)
+        thingy.motion.set_tap_notification(True)
+
 
 def main():
+    global args
+    global thingy
 
     args = parseArgs()
 
@@ -193,45 +268,14 @@ def main():
         thingy.ui.set_led_mode_breathe(0x01, 50, 100) # 0x01 = RED
         logger.debug('LED set to breathe mode...')
 
-        # Enabling selected sensors
-        logger.debug('Enabling selected sensors...')
-        # Environment Service
-        if args.temperature:
-            thingy.environment.enable()
-            thingy.environment.configure(temp_int=1000)
-            thingy.environment.set_temperature_notification(True)
-        if args.pressure:
-            thingy.environment.enable()
-            thingy.environment.configure(press_int=1000)
-            thingy.environment.set_pressure_notification(True)
-        if args.humidity:
-            thingy.environment.enable()
-            thingy.environment.configure(humid_int=1000)
-            thingy.environment.set_humidity_notification(True)
-        if args.gas:
-            thingy.environment.enable()
-            thingy.environment.configure(gas_mode_int=1)
-            thingy.environment.set_gas_notification(True)
-        if args.color:
-            thingy.environment.enable()
-            thingy.environment.configure(color_int=1000)
-            thingy.environment.configure(color_sens_calib=[0,0,0])
-            thingy.environment.set_color_notification(True)
-        # User Interface Service
-        if args.keypress:
-            thingy.ui.enable()
-            thingy.ui.set_btn_notification(True)
-        if args.battery:
-            thingy.battery.enable()
-        # Motion Service
-        if args.tap:
-            thingy.motion.enable()
-            thingy.motion.configure(motion_freq=200)
-            thingy.motion.set_tap_notification(True)
-
+        enableSensors()
+        
         counter = args.count
         while True:
             logger.debug('Loop start')
+
+            # enable notifications 
+            setNotifications(True)
 
             if args.battery:
                 logger.info('Battery: %i %%' % thingy.battery.read())
@@ -243,11 +287,14 @@ def main():
                 logger.debug('count reached, exiting...')
                 break
 
+            # disable notifications before sleeping time:
+            setNotifications(False)
+            time.sleep(args.sleep)
+
     finally:
         logger.info('disconnecting thingy...')
         thingy.disconnect()
         del thingy
-
 
 if __name__ == "__main__":
     main()
