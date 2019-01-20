@@ -35,17 +35,17 @@ args = None
 thingy = None
 notificationDelegate = None
 
-def setupSigInt():
-    '''Sets up our Ctrl + C handler'''
+def setupSignalHandler():
     signal.signal(signal.SIGINT, _sigIntHandler)
-    logging.debug("Installed Ctrl+C handler.")
+    signal.signal(signal.SIGTERM, _sigIntHandler)
+    logging.debug('Installed signal handlers')
 
 def _sigIntHandler(signum, frame):
     global thingy
 
-    '''This function handles Ctrl+C for graceful shutdown of the programme'''
-    logging.info("Received Ctrl+C. Exiting.")
-    thingy.disconnect()
+    logging.info('Received signal to exit')
+    if thingy:
+        thingy.disconnect()
     # stopMQTT()
     exit(0)
 
@@ -273,6 +273,8 @@ def main():
     global thingy
     global notificationDelegate
 
+    setupSignalHandler()
+
     args = parseArgs()
 
     notificationDelegate = MQTTDelegate()
@@ -286,7 +288,7 @@ def main():
         try:
             # Set LED so that we know we are connected
             thingy.ui.enable()
-            thingy.ui.set_led_mode_breathe(0x01, 50, 100) # 0x01 = RED
+            thingy.ui.set_led_mode_breathe(0x01, 50, 100) # color 0x01 = RED, intensity, delay
             logger.debug('LED set to breathe mode...')
 
             enableSensors()
@@ -320,12 +322,12 @@ def main():
             notificationDelegate.mqttSend('connected', 0, '')
             del thingy
 
-        except KeyboardInterrupt:
-            thingy.disconnect()
-            notificationDelegate.mqttSend('connected', 0, '')
-            del thingy
-            logger.info('Exiting due to keyboard command (Ctrl-C)')
-            exit(0)
+        # except KeyboardInterrupt:
+        #     thingy.disconnect()
+        #     notificationDelegate.mqttSend('connected', 0, '')
+        #     del thingy
+        #     logger.info('Exiting due to keyboard command (Ctrl-C)')
+        #     exit(0)
 
         # finally:
         #     logger.info('disconnecting thingy...')
