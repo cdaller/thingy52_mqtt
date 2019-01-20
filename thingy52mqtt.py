@@ -33,6 +33,7 @@ logger.debug('Starting...')
 next_event_second = 0
 args = None
 thingy = None
+notificationDelegate = None
 
 def setupSigInt():
     '''Sets up our Ctrl + C handler'''
@@ -44,7 +45,7 @@ def _sigIntHandler(signum, frame):
 
     '''This function handles Ctrl+C for graceful shutdown of the programme'''
     logging.info("Received Ctrl+C. Exiting.")
-    # handled in finally: thingy.disconnect()
+    thingy.disconnect()
     # stopMQTT()
     exit(0)
 
@@ -247,57 +248,82 @@ def enableSensors():
         thingy.motion.configure(motion_freq=200)
         thingy.motion.set_tap_notification(True)
 
+def connect():
+    global args
+    global thingy
+    global notificationDelegate
+
+    connected = False
+    while not connected:
+        try:
+            logger.info('Try to connect to ' + args.mac_address)
+            thingy = thingy52.Thingy52(args.mac_address)
+            connected = True
+            logger.info('Connected...')
+            thingy.setDelegate(notificationDelegate)
+            notificationDelegate.mqttSend('connected', 1, '')
+        except btle.BTLEException as ex:
+            connected = False
+            logger.debug('Could not connect, sleeping a while before retry')
+            time.sleep(args.sleep) # FIXME: use different sleep value??
+
 
 def main():
     global args
     global thingy
+    global notificationDelegate
 
     args = parseArgs()
 
-    logger.info('Connecting to ' + args.mac_address)
-    thingy = thingy52.Thingy52(args.mac_address)
-    logger.info('Connected...')
-
-    #print("# Setting notification handler to default handler...")
-    #thingy.setDelegate(thingy52.MyDelegate())
     notificationDelegate = MQTTDelegate()
-    thingy.setDelegate(notificationDelegate)
 
-    try:
-        # Set LED so that we know we are connected
-        thingy.ui.enable()
-        thingy.ui.set_led_mode_breathe(0x01, 50, 100) # 0x01 = RED
-        logger.debug('LED set to breathe mode...')
+    while True:
+        connect()
 
-        enableSensors()
-        
-        counter = args.count
-        while True:
-            logger.debug('Loop start')
+        #print("# Setting notification handler to default handler...")
+        #thingy.setDelegate(thingy52.MyDelegate())
 
-            # enable notifications 
-            setNotifications(True)
+        try:
+            # Set LED so that we know we are connected
+            thingy.ui.enable()
+            thingy.ui.set_led_mode_breathe(0x01, 50, 100) # 0x01 = RED
+            logger.debug('LED set to breathe mode...')
 
-            if args.battery:
-                value = thingy.battery.read()
-                notificationDelegate.mqttSend('battery', value, '%')
+            enableSensors()
+            
+            counter = args.count
+            while True:
+                logger.debug('Loop start')
 
-            thingy.waitForNotifications(timeout = args.timeout)
+                # enable notifications 
+                setNotifications(True)
 
-            counter -= 1
-            if counter == 0:
-                logger.debug('count reached, exiting...')
-                break
+                if args.battery:
+                    value = thingy.battery.read()
+                    notificationDelegate.mqttSend('battery', value, '%')
 
-            # disable notifications before sleeping time 
-            # all except button press - button triggers timeout and loop starts again
-            setNotifications(False)
-            thingy.waitForNotifications(timeout = args.sleep)
+                thingy.waitForNotifications(timeout = args.timeout)
 
-    finally:
-        logger.info('disconnecting thingy...')
-        thingy.disconnect()
-        del thingy
+                counter -= 1
+                if counter == 0:
+                    logger.debug('count reached, exiting...')
+                    break
+
+                # disable notifications before sleeping time 
+                # all except button press - button triggers timeout and loop starts again
+                setNotifications(False)
+                thingy.waitForNotifications(timeout = args.sleep)
+
+        except btle.BTLEDisconnectError as e:
+            logger.debug('BTLEDisconnectError %s' % str(e))
+            logger.info("Disconnected...")
+            notificationDelegate.mqttSend('connected', 0, '')
+            del thingy
+
+        # finally:
+        #     logger.info('disconnecting thingy...')
+        #     thingy.disconnect()
+        #     del thingy
 
 if __name__ == "__main__":
     main()
