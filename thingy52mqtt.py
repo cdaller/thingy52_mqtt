@@ -97,6 +97,7 @@ def mqttSendValues(notificationDelegate):
     global tapDirection
     global tapCount
     global orientation
+
     if args.temperature:
         mqttSend('temperature', temperature, '°C')
         temperature = None
@@ -195,13 +196,14 @@ class MQTTDelegate(btle.DefaultDelegate):
             teptep = binascii.b2a_hex(data)
             red, green, blue, clear = self._extract_color_data(data)
             color = "0x%0.2X%0.2X%0.2X" %(red, green, blue)
-            logging.debug('color %s red %d, green %d, blue %d, clear %d' % (color, red, green, blue, clear))
+            # logging.debug('color %s red %d, green %d, blue %d, clear %d' % (color, red, green, blue, clear))
 
         elif (hnd == thingy52.ui_button_handle):
             teptep = binascii.b2a_hex(data)
             value = int(teptep) # 1 = pressed, 0 = released
-            #logging.debug('Notification: Button state [1 -> released]: {}'.format(self._str_to_int(teptep)))
             button = value
+            # send button press instantly without waiting for timeout:
+            mqttSend('button', button, '')
 
         elif (hnd == thingy52.m_tap_handle):
             direction, count = self._extract_tap_data(data)
