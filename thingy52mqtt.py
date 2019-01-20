@@ -9,7 +9,7 @@ pip3 install bluepy
 to find the MAC address: 
 sudo hcitool lescan
 
-thingy52mqtt C2:9E:52:63:18:8A 
+thingy52mqtt.py C2:9E:52:63:18:8A  --no-mqtt --gas --temperature --humidity --pressure --battery --orientation --keypress --tap --sleep 5 -v -v -v -v -v
 
 """
 
@@ -193,8 +193,9 @@ class MQTTDelegate(btle.DefaultDelegate):
 
         elif (hnd == thingy52.e_color_handle):
             teptep = binascii.b2a_hex(data)
-            # FIXME: teptep has some hex format not encoded to color value!
-            color = teptep
+            red, green, blue, clear = self._extract_color_data(data)
+            color = "0x%0.2X%0.2X%0.2X" %(red, green, blue)
+            logging.debug('color %s red %d, green %d, blue %d, clear %d' % (color, red, green, blue, clear))
 
         elif (hnd == thingy52.ui_button_handle):
             teptep = binascii.b2a_hex(data)
@@ -260,6 +261,15 @@ class MQTTDelegate(btle.DefaultDelegate):
         eco2 = int(teptep[:2], 16) + (int(teptep[2:4], 16) << 8)
         tvoc = int(teptep[4:6], 16) + (int(teptep[6:8], 16) << 8)
         return eco2, tvoc
+
+    def _extract_color_data(self, data):
+        """ Extract color data from data string. """
+        teptep = binascii.b2a_hex(data)
+        red = int(teptep[:2], 16)
+        green = int(teptep[2:4], 16)
+        blue = int(teptep[4:6], 16)
+        clear = int(teptep[6:8], 16)
+        return red, green, blue, clear
 
     def _extract_tap_data(self, data):
         """ Extract tap data from data string. """
