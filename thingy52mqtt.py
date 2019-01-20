@@ -316,9 +316,16 @@ def main():
 
         except btle.BTLEDisconnectError as e:
             logger.debug('BTLEDisconnectError %s' % str(e))
-            logger.info("Disconnected...")
+            logger.info('Disconnected...')
             notificationDelegate.mqttSend('connected', 0, '')
             del thingy
+
+        except KeyboardInterrupt:
+            thingy.disconnect()
+            notificationDelegate.mqttSend('connected', 0, '')
+            del thingy
+            logger.info('Exiting due to keyboard command (Ctrl-C)')
+            exit(0)
 
         # finally:
         #     logger.info('disconnecting thingy...')
