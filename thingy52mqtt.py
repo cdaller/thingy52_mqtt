@@ -51,9 +51,6 @@ def _sigIntHandler(signum, frame):
 
 class MQTTDelegate(btle.DefaultDelegate):
 
-    def mqttSend(self, key, value):
-        logger.debug('Sending MQTT messages key %s value %s' % (key, value))
-    
     def handleNotification(self, hnd, data):
         # global next_event_second
         # global args
@@ -66,80 +63,80 @@ class MQTTDelegate(btle.DefaultDelegate):
         #Debug print repr(data)
         if (hnd == thingy52.e_temperature_handle):
             teptep = binascii.b2a_hex(data)
-            tempValue = self._str_to_int(teptep[:-2]) + int(teptep[-2:], 16) / 10.0
-            logger.debug('Notification: Temp received:  {}.{} degCelcius'.format(
-                        self._str_to_int(teptep[:-2]), int(teptep[-2:], 16)))
-            logger.debug('Sending MQTT messages key %s value %s' % ('temp', tempValue))
+            value = self._str_to_int(teptep[:-2]) + int(teptep[-2:], 16) / 100.0
+            self.mqttSend('temperature', value, '°C')
             
         elif (hnd == thingy52.e_pressure_handle):
             pressure_int, pressure_dec = self._extract_pressure_data(data)
-            logger.debug('Notification: Press received: {}.{} hPa'.format(
-                        pressure_int, pressure_dec))
+            value = pressure_int + pressure_dec / 100.0
+            self.mqttSend('pressure', value, 'hPa')
 
         elif (hnd == thingy52.e_humidity_handle):
             teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Humidity received: {} %'.format(self._str_to_int(teptep)))
+            value = self._str_to_int(teptep)
+            self.mqttSend('humidity', value, '%')
 
         elif (hnd == thingy52.e_gas_handle):
             eco2, tvoc = self._extract_gas_data(data)
-            logger.debug('Notification: Gas received: eCO2 ppm: {}, TVOC ppb: {} %'.format(eco2, tvoc))
+            self.mqttSend('eCO2', eco2, 'ppm')
+            self.mqttSend('tvoc', tvoc, 'ppb')
 
         elif (hnd == thingy52.e_color_handle):
             teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Color: {}'.format(teptep))            
+            self.mqttSend('color', teptep, '')
 
         elif (hnd == thingy52.ui_button_handle):
             teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Button state [1 -> released]: {}'.format(self._str_to_int(teptep)))
+            value = int(teptep) # 1 = pressed, 0 = released
+            #logger.debug('Notification: Button state [1 -> released]: {}'.format(self._str_to_int(teptep)))
+            self.mqttSend('button', value, '')
 
         elif (hnd == thingy52.m_tap_handle):
             direction, count = self._extract_tap_data(data)
-            logger.debug('Notification: Tap: direction: {}, count: {}'.format(direction, self._str_to_int(count)))
+            self.mqttSend('tapdirection', direction, '')
+            self.mqttSend('tapcount', count, '')
 
         elif (hnd == thingy52.m_orient_handle):
             teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Orient: {}'.format(teptep))
+            value = int(teptep)
+            # 1 = led top left
+            # 2 = led top right / left side up
+            # 3 = led bottom right/bottom up
+            # 0 = led bottom left/ right side up 
+            self.mqttSend('orientation', value, '')
 
-        elif (hnd == thingy52.m_quaternion_handle):
-            teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Quaternion: {}'.format(teptep))
+        # elif (hnd == thingy52.m_heading_handle):
+        #     teptep = binascii.b2a_hex(data)
+        #     #value = int (teptep)
+        #     logger.debug('Notification: Heading: {}'.format(teptep))
+        #     #self.mqttSend('heading', value, 'degrees')
 
-        elif (hnd == thingy52.m_stepcnt_handle):
-            teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Step Count: {}'.format(teptep))
+        # elif (hnd == thingy52.m_gravity_handle):
+        #     teptep = binascii.b2a_hex(data)
+        #     logger.debug('Notification: Gravity: {}'.format(teptep))        
 
-        elif (hnd == thingy52.m_rawdata_handle):
-            teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Raw data: {}'.format(teptep))
+        # elif (hnd == thingy52.s_speaker_status_handle):
+        #     teptep = binascii.b2a_hex(data)
+        #     logger.debug('Notification: Speaker Status: {}'.format(teptep))
 
-        elif (hnd == thingy52.m_euler_handle):
-            teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Euler: {}'.format(teptep))
-
-        elif (hnd == thingy52.m_rotation_handle):
-            teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Rotation matrix: {}'.format(teptep))
-
-        elif (hnd == thingy52.m_heading_handle):
-            teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Heading: {}'.format(teptep))
-
-        elif (hnd == thingy52.m_gravity_handle):
-            teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Gravity: {}'.format(teptep))        
-
-        elif (hnd == thingy52.s_speaker_status_handle):
-            teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Speaker Status: {}'.format(teptep))
-
-        elif (hnd == thingy52.s_microphone_handle):
-            teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: Microphone: {}'.format(teptep))
+        # elif (hnd == thingy52.s_microphone_handle):
+        #     teptep = binascii.b2a_hex(data)
+        #     logger.debug('Notification: Microphone: {}'.format(teptep))
 
         else:
             teptep = binascii.b2a_hex(data)
             logger.debug('Notification: UNKOWN: hnd {}, data {}'.format(hnd, teptep))
-            
+
+    def mqttSend(self, key, value, unit):
+        if isinstance(value, int):
+            logger.debug('Sending MQTT messages key %s value %d%s' % (key, value, unit))
+        elif isinstance(value, float) | isinstance(value, int):
+            logger.debug('Sending MQTT messages key %s value %.2f%s' % (key, value, unit))
+        elif isinstance(value, str):
+            logger.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
+        else:
+            logger.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
+
 
     def _str_to_int(self, s):
         """ Transform hex str into int. """
@@ -153,7 +150,7 @@ class MQTTDelegate(btle.DefaultDelegate):
         teptep = binascii.b2a_hex(data)
         pressure_int = 0
         for i in range(0, 4):
-                pressure_int += (int(teptep[i*2:(i*2)+2], 16) << 8*i)
+            pressure_int += (int(teptep[i*2:(i*2)+2], 16) << 8*i)
         pressure_dec = int(teptep[-2:], 16)
         return (pressure_int, pressure_dec)
 
@@ -167,8 +164,8 @@ class MQTTDelegate(btle.DefaultDelegate):
     def _extract_tap_data(self, data):
         """ Extract tap data from data string. """
         teptep = binascii.b2a_hex(data)
-        direction = teptep[0:2]
-        count = teptep[2:4]
+        direction = int(teptep[0:2])
+        count = int(teptep[2:4])
         return (direction, count)
 
 
@@ -186,6 +183,7 @@ def parseArgs():
     parser.add_argument('--keypress', action='store_true', default=False)
     parser.add_argument('--battery', action='store_true', default=False)
     parser.add_argument('--tap', action='store_true', default=False)
+    parser.add_argument('--orientation', action='store_true', default=False)
 
     parser.add_argument('--host', dest='hostname', default='localhost', help='MQTT hostname')
     parser.add_argument('--port', dest='port', default=1883, type=int, help='MQTT port')
@@ -211,6 +209,8 @@ def setNotifications(enable):
         thingy.environment.set_color_notification(enable)
     if args.tap:
         thingy.motion.set_tap_notification(enable)
+    if args.orientation:
+        thingy.motion.set_orient_notification(enable)
 
 def enableSensors():
     global thingy
@@ -260,8 +260,8 @@ def main():
 
     #print("# Setting notification handler to default handler...")
     #thingy.setDelegate(thingy52.MyDelegate())
-    logger.debug("# Setting notification handler to new handler...")
-    thingy.setDelegate(MQTTDelegate())
+    notificationDelegate = MQTTDelegate()
+    thingy.setDelegate(notificationDelegate)
 
     try:
         # Set LED so that we know we are connected
@@ -279,7 +279,8 @@ def main():
             setNotifications(True)
 
             if args.battery:
-                logger.info('Battery: %i %%' % thingy.battery.read())
+                value = thingy.battery.read()
+                notificationDelegate.mqttSend('battery', value, '%')
 
             thingy.waitForNotifications(timeout = args.timeout)
 
@@ -288,9 +289,10 @@ def main():
                 logger.debug('count reached, exiting...')
                 break
 
-            # disable notifications before sleeping time:
+            # disable notifications before sleeping time 
+            # all except button press - button triggers timeout and loop starts again
             setNotifications(False)
-            time.sleep(args.sleep)
+            thingy.waitForNotifications(timeout = args.sleep)
 
     finally:
         logger.info('disconnecting thingy...')
