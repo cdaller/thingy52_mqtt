@@ -33,7 +33,6 @@ logger.debug('Starting...')
 next_event_second = 0
 args = None
 thingy = None
-notificationDelegate = None
 
 def setupSignalHandler():
     signal.signal(signal.SIGINT, _sigIntHandler)
@@ -48,6 +47,16 @@ def _sigIntHandler(signum, frame):
         thingy.disconnect()
     # stopMQTT()
     exit(0)
+
+def mqttSend(key, value, unit):
+    if isinstance(value, int):
+        logger.debug('Sending MQTT messages key %s value %d%s' % (key, value, unit))
+    elif isinstance(value, float) | isinstance(value, int):
+        logger.debug('Sending MQTT messages key %s value %.2f%s' % (key, value, unit))
+    elif isinstance(value, str):
+        logger.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
+    else:
+        logger.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
 
 
 class MQTTDelegate(btle.DefaultDelegate):
@@ -65,37 +74,38 @@ class MQTTDelegate(btle.DefaultDelegate):
         if (hnd == thingy52.e_temperature_handle):
             teptep = binascii.b2a_hex(data)
             value = self._str_to_int(teptep[:-2]) + int(teptep[-2:], 16) / 100.0
-            self.mqttSend('temperature', value, '°C')
+            mqttSend('temperature', value, '°C')
             
         elif (hnd == thingy52.e_pressure_handle):
             pressure_int, pressure_dec = self._extract_pressure_data(data)
             value = pressure_int + pressure_dec / 100.0
-            self.mqttSend('pressure', value, 'hPa')
+            mqttSend('pressure', value, 'hPa')
 
         elif (hnd == thingy52.e_humidity_handle):
             teptep = binascii.b2a_hex(data)
             value = self._str_to_int(teptep)
-            self.mqttSend('humidity', value, '%')
+            mqttSend('humidity', value, '%')
 
         elif (hnd == thingy52.e_gas_handle):
             eco2, tvoc = self._extract_gas_data(data)
-            self.mqttSend('eCO2', eco2, 'ppm')
-            self.mqttSend('tvoc', tvoc, 'ppb')
+            mqttSend('eCO2', eco2, 'ppm')
+            mqttSend('tvoc', tvoc, 'ppb')
 
         elif (hnd == thingy52.e_color_handle):
             teptep = binascii.b2a_hex(data)
-            self.mqttSend('color', teptep, '')
+            # FIXME: teptep has some hex format not encoded to color value!
+            mqttSend('color', teptep, '')
 
         elif (hnd == thingy52.ui_button_handle):
             teptep = binascii.b2a_hex(data)
             value = int(teptep) # 1 = pressed, 0 = released
             #logger.debug('Notification: Button state [1 -> released]: {}'.format(self._str_to_int(teptep)))
-            self.mqttSend('button', value, '')
+            mqttSend('button', value, '')
 
         elif (hnd == thingy52.m_tap_handle):
             direction, count = self._extract_tap_data(data)
-            self.mqttSend('tapdirection', direction, '')
-            self.mqttSend('tapcount', count, '')
+            mqttSend('tapdirection', direction, '')
+            mqttSend('tapcount', count, '')
 
         elif (hnd == thingy52.m_orient_handle):
             teptep = binascii.b2a_hex(data)
@@ -104,7 +114,7 @@ class MQTTDelegate(btle.DefaultDelegate):
             # 2 = led top right / left side up
             # 3 = led bottom right/bottom up
             # 0 = led bottom left/ right side up 
-            self.mqttSend('orientation', value, '')
+            mqttSend('orientation', value, '')
 
         # elif (hnd == thingy52.m_heading_handle):
         #     teptep = binascii.b2a_hex(data)
@@ -127,17 +137,6 @@ class MQTTDelegate(btle.DefaultDelegate):
         else:
             teptep = binascii.b2a_hex(data)
             logger.debug('Notification: UNKOWN: hnd {}, data {}'.format(hnd, teptep))
-
-    def mqttSend(self, key, value, unit):
-        if isinstance(value, int):
-            logger.debug('Sending MQTT messages key %s value %d%s' % (key, value, unit))
-        elif isinstance(value, float) | isinstance(value, int):
-            logger.debug('Sending MQTT messages key %s value %.2f%s' % (key, value, unit))
-        elif isinstance(value, str):
-            logger.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
-        else:
-            logger.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
-
 
     def _str_to_int(self, s):
         """ Transform hex str into int. """
@@ -248,10 +247,9 @@ def enableSensors():
         thingy.motion.configure(motion_freq=200)
         thingy.motion.set_tap_notification(True)
 
-def connect():
+def connect(notificationDelegate):
     global args
     global thingy
-    global notificationDelegate
 
     connected = False
     while not connected:
@@ -261,7 +259,7 @@ def connect():
             connected = True
             logger.info('Connected...')
             thingy.setDelegate(notificationDelegate)
-            notificationDelegate.mqttSend('connected', 1, '')
+            mqttSend('connected', 1, '')
         except btle.BTLEException as ex:
             connected = False
             logger.debug('Could not connect, sleeping a while before retry')
@@ -271,7 +269,6 @@ def connect():
 def main():
     global args
     global thingy
-    global notificationDelegate
 
     setupSignalHandler()
 
@@ -280,7 +277,7 @@ def main():
     notificationDelegate = MQTTDelegate()
 
     while True:
-        connect()
+        connect(notificationDelegate)
 
         #print("# Setting notification handler to default handler...")
         #thingy.setDelegate(thingy52.MyDelegate())
@@ -302,7 +299,7 @@ def main():
 
                 if args.battery:
                     value = thingy.battery.read()
-                    notificationDelegate.mqttSend('battery', value, '%')
+                    mqttSend('battery', value, '%')
 
                 thingy.waitForNotifications(timeout = args.timeout)
 
@@ -319,12 +316,12 @@ def main():
         except btle.BTLEDisconnectError as e:
             logger.debug('BTLEDisconnectError %s' % str(e))
             logger.info('Disconnected...')
-            notificationDelegate.mqttSend('connected', 0, '')
+            mqttSend('connected', 0, '')
             del thingy
 
         # except KeyboardInterrupt:
         #     thingy.disconnect()
-        #     notificationDelegate.mqttSend('connected', 0, '')
+        #     mqttSend('connected', 0, '')
         #     del thingy
         #     logger.info('Exiting due to keyboard command (Ctrl-C)')
         #     exit(0)
