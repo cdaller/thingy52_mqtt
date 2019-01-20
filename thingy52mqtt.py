@@ -23,17 +23,23 @@ import binascii
 import logging
 import signal, sys
 
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-                    datefmt='%yyyy%m%d-%H:%M:%S')
-
-logger = logging.getLogger(os.path.basename(__file__))
-logger.debug('Starting...')
-
-
 next_event_second = 0
 args = None
 thingy = None
+
+# last values from received from notification:
+temperature = None
+pressure = None
+humidity = None
+eco2 = None
+tvoc = None
+color = None
+button = None
+tapDirection = None
+tapCount = None
+orientation = None
+battery = None
+
 
 def setupSignalHandler():
     signal.signal(signal.SIGINT, _sigIntHandler)
@@ -49,82 +55,157 @@ def _sigIntHandler(signum, frame):
         mqttSend('connected', 0, '')
     exit(0)
 
+def setupLogging():
+    '''Sets up logging'''
+    global args
+    if args.v > 5:
+        verbosityLevel = 5
+    else:
+        verbosityLevel = args.v
+    # https://docs.python.org/2/library/logging.html#logging-levels
+    verbosityLevel = (5 - verbosityLevel)*10
+
+    # print('loglevel %d v:%d' % (verbosityLevel, args.v))
+
+    format = '%(asctime)s %(levelname)-8s %(message)s'
+    if args.logfile is not None:
+        logging.basicConfig(filename=args.logfile, level=verbosityLevel, format=format)
+    else:
+        logging.basicConfig(level=verbosityLevel, format=format)
+
+    #logging.debug('debug') # 10
+    #logging.info('info') # 20
+    #logging.warn('warn') # 30
+    #logging.error('error') # 40
+    #logging.critical('critical') # 50
+
+    # logger = logging.getLogger(os.path.basename(__file__))
+
+    # logging.basicConfig(level=logging.DEBUG,
+    #                 format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+    #                 datefmt='%yyyy%m%d-%H:%M:%S')
+
+
+def mqttSendValues(notificationDelegate):
+    global temperature
+    global pressure
+    global humidity
+    global eco2
+    global tvoc
+    global color
+    global button
+    global tapDirection
+    global tapCount
+    global orientation
+    if args.temperature:
+        mqttSend('temperature', temperature, '°C')
+        temperature = None
+    if args.pressure:
+        mqttSend('pressure', pressure, 'hPa')
+        pressure = None
+    if args.humidity:
+        mqttSend('humidity', humidity, '%')
+        humidity = None
+    if args.gas:
+        mqttSend('eco2', eco2, 'bbm')
+        mqttSend('tvoc', tvoc, 'ppb')
+        eco2 = None
+        tvoc = None
+    if args.color:
+        mqttSend('color', color, '')
+        color = None
+    if args.tap:
+        mqttSend('tapdirection', tapDirection, '')
+        mqttSend('tapcount', tapCount, '')
+        tapDirection = None
+        tapCount = None
+    if args.orientation:
+        mqttSend('orientation', orientation, '')
+        orientation = None
+
 def mqttSend(key, value, unit):
     global args
 
+    if value is None:
+        logging.debug('no value given, do nothing for key %s' % key)
+        return
+
     if isinstance(value, int):
-        logger.debug('Sending MQTT messages key %s value %d%s' % (key, value, unit))
+        logging.debug('Sending MQTT messages key %s value %d%s' % (key, value, unit))
     elif isinstance(value, float) | isinstance(value, int):
-        logger.debug('Sending MQTT messages key %s value %.2f%s' % (key, value, unit))
+        logging.debug('Sending MQTT messages key %s value %.2f%s' % (key, value, unit))
     elif isinstance(value, str):
-        logger.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
+        logging.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
     else:
-        logger.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
+        logging.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
 
     if args.mqttdisabled:
-        logger.debug('MQTT disabled, not sending message')
+        logging.debug('MQTT disabled, not sending message')
     else:
         try:
             topic = args.topicprefix + key
             payload = value
-            logger.debug('MQTT message topic %s, payload %s' % (topic, str(payload)))
+            logging.debug('MQTT message topic %s, payload %s' % (topic, str(payload)))
             publish.single(topic, 
                         payload = payload,
                         hostname = args.hostname, 
                         port = args.port, 
                         retain = True)
         except:
-            logger.error("Failed to publish message, details follow")
-            logger.error("hostname=%s topic=%s payload=%s" % (args.hostname, topic, payload))
-            logger.error(sys.exc_info()[0])
+            logging.error("Failed to publish message, details follow")
+            logging.error("hostname=%s topic=%s payload=%s" % (args.hostname, topic, payload))
+            logging.error(sys.exc_info()[0])
 
 class MQTTDelegate(btle.DefaultDelegate):
 
     def handleNotification(self, hnd, data):
-        # global next_event_second
-        # global args
-
-        # if time.time() < next_event_second:
-        #     logger.debug('Notification received, but timeout not yet reached')
-        #     return
-        # next_event_second = time.time() + args.sleep
+        global temperature
+        global pressure
+        global humidity
+        global eco2
+        global tvoc
+        global color
+        global button
+        global tapDirection
+        global tapCount
+        global orientation
 
         #Debug print repr(data)
         if (hnd == thingy52.e_temperature_handle):
             teptep = binascii.b2a_hex(data)
             value = self._str_to_int(teptep[:-2]) + int(teptep[-2:], 16) / 100.0
-            mqttSend('temperature', value, '°C')
+            temperature = value
             
         elif (hnd == thingy52.e_pressure_handle):
             pressure_int, pressure_dec = self._extract_pressure_data(data)
             value = pressure_int + pressure_dec / 100.0
-            mqttSend('pressure', value, 'hPa')
+            pressure = value
 
         elif (hnd == thingy52.e_humidity_handle):
             teptep = binascii.b2a_hex(data)
             value = self._str_to_int(teptep)
-            mqttSend('humidity', value, '%')
+            humidity = value
 
         elif (hnd == thingy52.e_gas_handle):
             eco2, tvoc = self._extract_gas_data(data)
-            mqttSend('eCO2', eco2, 'ppm')
-            mqttSend('tvoc', tvoc, 'ppb')
+            eco2 = eco2
+            tvoc = tvoc
 
         elif (hnd == thingy52.e_color_handle):
             teptep = binascii.b2a_hex(data)
             # FIXME: teptep has some hex format not encoded to color value!
-            mqttSend('color', teptep, '')
+            color = teptep
 
         elif (hnd == thingy52.ui_button_handle):
             teptep = binascii.b2a_hex(data)
             value = int(teptep) # 1 = pressed, 0 = released
-            #logger.debug('Notification: Button state [1 -> released]: {}'.format(self._str_to_int(teptep)))
-            mqttSend('button', value, '')
+            #logging.debug('Notification: Button state [1 -> released]: {}'.format(self._str_to_int(teptep)))
+            button = value
 
         elif (hnd == thingy52.m_tap_handle):
             direction, count = self._extract_tap_data(data)
-            mqttSend('tapdirection', direction, '')
-            mqttSend('tapcount', count, '')
+            tapDirection = direction
+            tapCount = direction
 
         elif (hnd == thingy52.m_orient_handle):
             teptep = binascii.b2a_hex(data)
@@ -133,29 +214,29 @@ class MQTTDelegate(btle.DefaultDelegate):
             # 2 = led top right / left side up
             # 3 = led bottom right/bottom up
             # 0 = led bottom left/ right side up 
-            mqttSend('orientation', value, '')
+            orientation = value
 
         # elif (hnd == thingy52.m_heading_handle):
         #     teptep = binascii.b2a_hex(data)
         #     #value = int (teptep)
-        #     logger.debug('Notification: Heading: {}'.format(teptep))
+        #     logging.debug('Notification: Heading: {}'.format(teptep))
         #     #self.mqttSend('heading', value, 'degrees')
 
         # elif (hnd == thingy52.m_gravity_handle):
         #     teptep = binascii.b2a_hex(data)
-        #     logger.debug('Notification: Gravity: {}'.format(teptep))        
+        #     logging.debug('Notification: Gravity: {}'.format(teptep))        
 
         # elif (hnd == thingy52.s_speaker_status_handle):
         #     teptep = binascii.b2a_hex(data)
-        #     logger.debug('Notification: Speaker Status: {}'.format(teptep))
+        #     logging.debug('Notification: Speaker Status: {}'.format(teptep))
 
         # elif (hnd == thingy52.s_microphone_handle):
         #     teptep = binascii.b2a_hex(data)
-        #     logger.debug('Notification: Microphone: {}'.format(teptep))
+        #     logging.debug('Notification: Microphone: {}'.format(teptep))
 
         else:
             teptep = binascii.b2a_hex(data)
-            logger.debug('Notification: UNKOWN: hnd {}, data {}'.format(hnd, teptep))
+            logging.debug('Notification: UNKOWN: hnd {}, data {}'.format(hnd, teptep))
 
     def _str_to_int(self, s):
         """ Transform hex str into int. """
@@ -176,8 +257,8 @@ class MQTTDelegate(btle.DefaultDelegate):
     def _extract_gas_data(self, data):
         """ Extract gas data from data string. """
         teptep = binascii.b2a_hex(data)
-        eco2 = int(teptep[:2]) + (int(teptep[2:4]) << 8)
-        tvoc = int(teptep[4:6]) + (int(teptep[6:8]) << 8)
+        eco2 = int(teptep[:2], 16) + (int(teptep[2:4], 16) << 8)
+        tvoc = int(teptep[4:6], 16) + (int(teptep[6:8], 16) << 8)
         return eco2, tvoc
 
     def _extract_tap_data(self, data):
@@ -212,6 +293,9 @@ def parseArgs():
 
     parser.add_argument('--sleep', dest='sleep', default=60, type=int, help='Interval to publish values.')
 
+    parser.add_argument("--logfile", help="If specified, will log messages to the given file (default log to terminal)", default=None)
+    parser.add_argument("-v", help="Increase logging verbosity (can be used up to 5 times)", action="count", default=0)
+
     args = parser.parse_args()
     return args
 
@@ -222,9 +306,9 @@ def setNotifications(enable):
     if args.temperature:
         thingy.environment.set_temperature_notification(enable)
     if args.pressure:
-        thingy.environment.set_humidity_notification(enable)
-    if args.pressure:
         thingy.environment.set_pressure_notification(enable)
+    if args.humidity:
+        thingy.environment.set_humidity_notification(enable)
     if args.gas:
         thingy.environment.set_gas_notification(enable)
     if args.color:
@@ -239,7 +323,7 @@ def enableSensors():
     global args
 
     # Enabling selected sensors
-    logger.debug('Enabling selected sensors...')
+    logging.debug('Enabling selected sensors...')
 
     if args.temperature:
         thingy.environment.enable()
@@ -276,25 +360,28 @@ def connect(notificationDelegate):
     connected = False
     while not connected:
         try:
-            logger.info('Try to connect to ' + args.mac_address)
+            logging.info('Try to connect to ' + args.mac_address)
             thingy = thingy52.Thingy52(args.mac_address)
             connected = True
-            logger.info('Connected...')
+            logging.info('Connected...')
             thingy.setDelegate(notificationDelegate)
             mqttSend('connected', 1, '')
         except btle.BTLEException as ex:
             connected = False
-            logger.debug('Could not connect, sleeping a while before retry')
+            logging.debug('Could not connect, sleeping a while before retry')
             time.sleep(args.sleep) # FIXME: use different sleep value??
 
 
 def main():
     global args
     global thingy
-
-    setupSignalHandler()
+    global battery
 
     args = parseArgs()
+
+    setupLogging()
+
+    setupSignalHandler()
 
     notificationDelegate = MQTTDelegate()
 
@@ -308,37 +395,35 @@ def main():
         try:
             # Set LED so that we know we are connected
             thingy.ui.enable()
-            thingy.ui.set_led_mode_breathe(0x01, 50, 100) # color 0x01 = RED, intensity, delay
-            logger.debug('LED set to breathe mode...')
+            thingy.ui.set_led_mode_breathe(0x01, 50, 3000) # color 0x01 = RED, intensity, delay between breathes
+            logging.debug('LED set to breathe mode...')
 
             enableSensors()
+            setNotifications(True)
             
             counter = args.count
+            timeNextSend = time.time()
             while connectAndReadValues:
-                logger.debug('Loop start')
-
-                # enable notifications 
-                setNotifications(True)
+                logging.debug('Loop start')
 
                 if args.battery:
                     value = thingy.battery.read()
-                    mqttSend('battery', value, '%')
+                    battery = value
 
                 thingy.waitForNotifications(timeout = args.timeout)
 
                 counter -= 1
                 if counter == 0:
-                    logger.debug('count reached, exiting...')
+                    logging.debug('count reached, exiting...')
                     connectAndReadValues = False
 
-                # disable notifications before sleeping time 
-                # all except button press - button triggers timeout and loop starts again
-                setNotifications(False)
-                thingy.waitForNotifications(timeout = args.sleep)
+                if time.time() > timeNextSend:
+                    mqttSendValues(notificationDelegate)
+                    timeNextSend = time.time() + args.sleep
 
         except btle.BTLEDisconnectError as e:
-            logger.debug('BTLEDisconnectError %s' % str(e))
-            logger.info('Disconnected...')
+            logging.debug('BTLEDisconnectError %s' % str(e))
+            logging.info('Disconnected...')
             mqttSend('connected', 0, '')
             del thingy
     
