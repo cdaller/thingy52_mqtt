@@ -13,6 +13,7 @@ thingy52mqtt C2:9E:52:63:18:8A
 
 """
 
+import paho.mqtt.publish as publish
 from bluepy import btle, thingy52
 # from bluepy.btle import UUID, Peripheral, ADDR_TYPE_RANDOM, DefaultDelegate
 import time
@@ -20,7 +21,7 @@ import os
 import argparse
 import binascii
 import logging
-import signal
+import signal, sys
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
@@ -45,10 +46,12 @@ def _sigIntHandler(signum, frame):
     logging.info('Received signal to exit')
     if thingy:
         thingy.disconnect()
-    # stopMQTT()
+        mqttSend('connected', 0, '')
     exit(0)
 
 def mqttSend(key, value, unit):
+    global args
+
     if isinstance(value, int):
         logger.debug('Sending MQTT messages key %s value %d%s' % (key, value, unit))
     elif isinstance(value, float) | isinstance(value, int):
@@ -58,6 +61,22 @@ def mqttSend(key, value, unit):
     else:
         logger.debug('Sending MQTT messages key %s value %s%s' % (key, value, unit))
 
+    if args.mqttdisabled:
+        logger.debug('MQTT disabled, not sending message')
+    else:
+        try:
+            topic = args.topicprefix + key
+            payload = value
+            logger.debug('MQTT message topic %s, payload %s' % (topic, str(payload)))
+            publish.single(topic, 
+                        payload = payload,
+                        hostname = args.hostname, 
+                        port = args.port, 
+                        retain = True)
+        except:
+            logger.error("Failed to publish message, details follow")
+            logger.error("hostname=%s topic=%s payload=%s" % (args.hostname, topic, payload))
+            logger.error(sys.exc_info()[0])
 
 class MQTTDelegate(btle.DefaultDelegate):
 
@@ -185,9 +204,12 @@ def parseArgs():
     parser.add_argument('--tap', action='store_true', default=False)
     parser.add_argument('--orientation', action='store_true', default=False)
 
+    # mqtt arguments
+    parser.add_argument('--no-mqtt', dest='mqttdisabled', action='store_true', default=False)
     parser.add_argument('--host', dest='hostname', default='localhost', help='MQTT hostname')
     parser.add_argument('--port', dest='port', default=1883, type=int, help='MQTT port')
-    parser.add_argument('--topicprefix', dest='topicprefix', default="/home/thingy/", help='MQTT topic prefix to post the values')
+    parser.add_argument('--topic-prefix', dest='topicprefix', default="/home/thingy/", help='MQTT topic prefix to post the values, prefix + key is used as topic')
+
     parser.add_argument('--sleep', dest='sleep', default=60, type=int, help='Interval to publish values.')
 
     args = parser.parse_args()
@@ -276,7 +298,8 @@ def main():
 
     notificationDelegate = MQTTDelegate()
 
-    while True:
+    connectAndReadValues = True
+    while connectAndReadValues:
         connect(notificationDelegate)
 
         #print("# Setting notification handler to default handler...")
@@ -291,7 +314,7 @@ def main():
             enableSensors()
             
             counter = args.count
-            while True:
+            while connectAndReadValues:
                 logger.debug('Loop start')
 
                 # enable notifications 
@@ -306,7 +329,7 @@ def main():
                 counter -= 1
                 if counter == 0:
                     logger.debug('count reached, exiting...')
-                    break
+                    connectAndReadValues = False
 
                 # disable notifications before sleeping time 
                 # all except button press - button triggers timeout and loop starts again
@@ -318,18 +341,11 @@ def main():
             logger.info('Disconnected...')
             mqttSend('connected', 0, '')
             del thingy
-
-        # except KeyboardInterrupt:
-        #     thingy.disconnect()
-        #     mqttSend('connected', 0, '')
-        #     del thingy
-        #     logger.info('Exiting due to keyboard command (Ctrl-C)')
-        #     exit(0)
-
-        # finally:
-        #     logger.info('disconnecting thingy...')
-        #     thingy.disconnect()
-        #     del thingy
+    
+    if thingy:
+        thingy.disconnect()
+        del thingy
+        mqttSend('connected', 0, '')
 
 if __name__ == "__main__":
     main()
