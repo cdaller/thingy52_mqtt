@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
 
 """
-https://github.com/IanHarvey/bluepy/blob/master/bluepy/thingy52.py
+Reading values from thingy device and send them as mqtt messages.
+Handles automatic reconnection if bluetooth connection is lost.
+
+Source is derived from the bluepy library from Ian Harvey and Nordic Semiconductor
+
+Bluepy repository: https://github.com/IanHarvey/bluepy/blob/master/bluepy/thingy52.py
+Nordic Semiconductor Python: https://devzone.nordicsemi.com/b/blog/posts/nordic-thingy52-raspberry-pi-python-interface
+Nordic Semiconductor NodeJS: https://github.com/NordicPlayground/Nordic-Thingy52-Thingyjs
 
 dependencies installation on raspberry pi:
 pip3 install bluepy
+pip3 install paho-mqtt
 
 to find the MAC address: 
 sudo hcitool lescan
 
+Usage:
 thingy52mqtt.py C2:9E:52:63:18:8A  --no-mqtt --gas --temperature --humidity --pressure --battery --orientation --keypress --tap --sleep 5 -v -v -v -v -v
 
 """
 
 import paho.mqtt.publish as publish
 from bluepy import btle, thingy52
-# from bluepy.btle import UUID, Peripheral, ADDR_TYPE_RANDOM, DefaultDelegate
 import time
 import os
 import argparse
