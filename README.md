@@ -24,10 +24,12 @@ sudo hcitool lescan
 Then start the script with the MAC address and the parameters to choose which sensor values you want to read.
 Parameters are also used to define the MQTT broker to send the values to, if wanted:
 
-Only print values (via debug messages), do not publish them via MQTT:
+Only print values every 5 seconds (via debug messages), do not publish them via MQTT:
 
 ```sh
-thingy52mqtt.py <MAC_ADDRESS> --no-mqtt --gas --temperature --humidity --pressure --battery --orientation --keypress --tap --sleep 5 -v -v -v -v -v
+thingy52mqtt.py <MAC_ADDRESS> --no-mqtt --gas --temperature --humidity --pressure \
+  --battery --orientation --keypress --tap \
+  --sleep 5 -v -v -v -v -v
 ```
 
 Read some values and publish them via MQTT every minute, do not print debug info.
