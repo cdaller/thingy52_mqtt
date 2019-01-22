@@ -13,6 +13,8 @@ pip3 install bluepy
 pip3 install paho-mqtt
 ```
 
+If you want to run the script as systemd service, use the service class as example. See systemd/systemctl documentation how to do it properly.
+
 ## Run
 
 The MAC address of the device can be retrieved by
