@@ -97,6 +97,7 @@ def mqttSendValues(notificationDelegate):
     global tapDirection
     global tapCount
     global orientation
+    global battery
 
     if args.temperature:
         mqttSend('temperature', temperature, '°C')
@@ -123,6 +124,9 @@ def mqttSendValues(notificationDelegate):
     if args.orientation:
         mqttSend('orientation', orientation, '')
         orientation = None
+    if args.battery:
+        mqttSend('battery', battery, '%')
+        battery = None
 
 def mqttSend(key, value, unit):
     global args
