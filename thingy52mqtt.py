@@ -428,7 +428,7 @@ def main():
             counter = args.count
             timeNextSend = time.time()
             while connectAndReadValues:
-                logging.debug('Loop start')
+                # logging.debug('Loop start')
 
                 if args.battery:
                     value = thingy.battery.read()
@@ -449,12 +449,14 @@ def main():
             logging.debug('BTLEDisconnectError %s' % str(e))
             logging.info('Disconnected...')
             mqttSend('connected', 0, '')
-            del thingy
+            thingy = None
     
     if thingy:
-        thingy.disconnect()
-        del thingy
-        mqttSend('connected', 0, '')
+        try:
+            thingy.disconnect()
+            #del thingy
+        finally:
+            mqttSend('connected', 0, '')
 
 if __name__ == "__main__":
     main()
