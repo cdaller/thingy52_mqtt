@@ -1,10 +1,15 @@
+# systemd service for thingy52mqtt script
+#
+# watch log with
+# sudo journalctl -f -u thingy52mqtt.service
+
 [Unit]
 Description=Thingy52 MQTT Publisher
 After=multi-user.target
  
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /home/pi/scripts/thingy52mqtt.py C2:9E:52:63:18:8A  --temperature --pressure --humidity --keypress --battery --gas
+ExecStart=/home/pi/scripts/thingy52mqtt.py C2:9E:52:63:18:8A  --temperature --pressure --humidity --keypress --battery --gas -v -v -v -v -v
 Restart=on-abort
  
 [Install]
